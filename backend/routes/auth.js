@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import { sendVerificationEmail } from "../utils/sendMail.js";
+import { verifyToken } from "../utils/verifyToken.js";
 
 const router = express.Router();
 const signupCooldown = {};
@@ -121,34 +122,37 @@ router.get("/verify/:token", async (req, res) => {
 
 
 router.post("/refresh", (req, res) => {
-  const token = req.cookies.refreshToken;
-  if (!token) return res.status(401).json({ message: "No refresh token" });
+    const refreshToken = req.cookies.refreshToken;
+    if (!refreshToken)
+        return res.status(401).json({ message: "No refresh token" });
 
-  try {
-    const decoded = jwt.verify(token, process.env.REFRESH_SECRET);
+    jwt.verify(refreshToken, process.env.REFRESH_SECRET, (err, decoded) => {
+        if (err)
+            return res.status(403).json({ message: "Invalid refresh token" });
 
-    const newAccessToken = jwt.sign(
-      { username: decoded.username, email: decoded.email },
-      process.env.ACCESS_SECRET,
-      { expiresIn: "15m" }
+          const newAccessToken = jwt.sign(
+        { username: decoded.username, email: decoded.email },
+        process.env.ACCESS_SECRET,
+        { expiresIn: "15m" }
     );
 
-    return res.json({ accessToken: newAccessToken });
-  } catch (err) {
-    return res.status(403).json({ message: "Invalid refresh token" });
-  }
+
+        res.json({ accessToken: newAccessToken });
+    });
 });
 
-router.get("/validate", (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.sendStatus(401);
+router.get("/me", verifyToken, async (req, res) => {
+    try {
+        const user = await User.findOne({ email: req.userEmail }).select("-password");
 
-  const token = authHeader.split(" ")[1];
+        if (!user) return res.status(404).json({ message: "User not found" });
 
-  jwt.verify(token, process.env.ACCESS_SECRET, (err, user) => {
-    if (err) return res.sendStatus(403);
-    res.sendStatus(200);
-  });
+        res.json({ user });
+    } catch (err) {
+        res.status(500).json({ message: "Server error" });
+    }
 });
+
+
 
 export default router;

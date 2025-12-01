@@ -1,137 +1,86 @@
-import { useEffect, useState } from 'react'
-import Signup from './components/Signup'
-import Login from './components/Login'
-import Homepage from './components/Homepage'
+import { useEffect, useState } from "react";
+import Signup from "./components/Signup";
+import Login from "./components/Login";
+import Homepage from "./components/Homepage";
+import api from "./api";
 
-
-type Page = 'signup' | 'login' | 'homepage'
-
+type Page = "signup" | "login" | "homepage";
 
 export default function App() {
-const [page, setPage] = useState<Page>('signup')
-const [user, setUser] = useState<string | null>(null)
+  const [page, setPage] = useState<Page>("signup");
+  const [user, setUser] = useState<any>(null);
 
+  // ----------------------------
+  // CHECK USER ON PAGE LOAD
+  // ----------------------------
+  useEffect(() => {
+    const checkUser = async () => {
+      try {
+        const res = await api.get("/me");
+        setUser(res.data.user.username);
+        setPage("homepage");
+      } catch (error) {
+        console.log("No valid access token, Axios will refresh automatically.");
+      }
+    };
 
-useEffect(() => {
-  async function checkAuth() {
-    const token = localStorage.getItem("accessToken");
-    const username = localStorage.getItem("username");
+    checkUser();
+  }, []);
 
-    if (!token || !username) {
-      setPage("login");
-      return;
-    }
-
-    const isValid = await validateAccessToken(token);
-
-    if (isValid) {
-      setUser(username);
-      setPage("homepage");
-    } else {
-      localStorage.removeItem("accessToken");
-      localStorage.removeItem("username");
-      setPage("login");
-    }
+  // ----------------------------
+  // ON LOGIN
+  // ----------------------------
+  function handleLogin(username: string, accessToken: string) {
+    localStorage.setItem("accessToken", accessToken);
+    setUser(username);
+    setPage("homepage");
   }
 
-  checkAuth();
-}, []);
+  // ----------------------------
+  // ON LOGOUT
+  // ----------------------------
+  async function handleLogout() {
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("username");
 
+    // use axios, not fetch
+    await api.post("/logout").catch(() => {});
 
-
-function handleLogin(username: string, accessToken: string) {
-  localStorage.setItem("accessToken", accessToken);
-  localStorage.setItem("username", username);
-  setUser(username);
-  setPage("homepage");
-}
-
-function handleLogout() {
-  localStorage.removeItem("accessToken");
-  localStorage.removeItem("username");
-
-  fetch("http://localhost:5000/api/auth/logout", {
-    method: "POST",
-    credentials: "include"
-  });
-
-  setUser(null);
-  setPage("login");
-}
-
-  async function refreshAccessToken() {
-  try {
-    const response = await fetch("http://localhost:5000/api/auth/refresh", {
-      method: "POST",
-      credentials: "include",
-    });
-
-    if (!response.ok) return null;
-
-    const data = await response.json();
-    localStorage.setItem("accessToken", data.accessToken);
-    return data.accessToken;
-
-  } catch (err) {
-    console.log("Refresh failed:", err);
-    return null;
+    setUser(null);
+    setPage("login");
   }
-}
-async function validateAccessToken(token: string) {
-  try {
-    const response = await fetch("http://localhost:5000/api/auth/validate", {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (response.ok) return true;
-    if (response.status === 401 || response.status === 403) {
-      const newToken = await refreshAccessToken();
-      if (!newToken) return false;
-      const retry = await fetch("http://localhost:5000/api/auth/validate", {
-        method: "GET",
-        headers: { Authorization: `Bearer ${newToken}` },
-      });
 
-      return retry.ok;
-    }
+  return (
+    <div className="container">
+      <div className="card">
+        {page === "signup" && (
+          <>
+            <Signup onSwitch={() => setPage("login")} />
+            <p className="muted">
+              Already have an account?{" "}
+              <button className="link" onClick={() => setPage("login")}>
+                Login
+              </button>
+            </p>
+          </>
+        )}
 
-    return false;
+        {page === "login" && (
+          <>
+            <Login onSwitch={() => setPage("signup")} onLogin={handleLogin} />
+            <p className="muted">
+              Don't have an account?{" "}
+              <button className="link" onClick={() => setPage("signup")}>
+                Signup
+              </button>
+            </p>
+          </>
+        )}
 
-  } catch (err) {
-    console.log("Validate error:", err);
-    return false;
-  }
-}
-
-
-
-return (
-<div className="container">
-
-<div className="card">
-{page === 'signup' && (
-<>
-<Signup onSwitch={() => setPage('login')} />
-<p className="muted">Already have an account? <button className="link" onClick={() => setPage('login')}>Login</button></p>
-</>
-)}
-
-
-{page === 'login' && (
-<>
-<Login onSwitch={() => setPage('signup')} onLogin={handleLogin} />
-<p className="muted">Don't have an account? <button className="link" onClick={() => setPage('signup')}>Signup</button></p>
-</>
-)}
-
-
-{page === 'homepage' && user ? (
-  <Homepage username={user} onLogout={handleLogout} />
-) : null}
-
-</div>
-
-
-</div>
-)
+        {page === "homepage" && user ? (
+          <Homepage username={user} onLogout={handleLogout} />
+        ) : null}
+      </div>
+    </div>
+  );
 }
